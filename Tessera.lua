@@ -50,10 +50,10 @@ local function safeLoadSettings()
       right = keys.right,
       down = keys.down,
       drop = keys.space,
-      rotate_cw = string.byte("x"),
-      rotate_ccw = string.byte("z"),
-      rotate_180 = string.byte("c"),
-      pause = string.byte("p")
+      rotate_cw = 88,
+      rotate_ccw = 90,
+      rotate_180 = 67,
+      pause = 80
     },
   }
   if fs.exists(settingsFile) then
@@ -1398,5 +1398,6 @@ end
 
 music:stop()
 term.setBackgroundColor(colors.black); term.clear(); term.setCursorPos(1,1)
+
 
 
