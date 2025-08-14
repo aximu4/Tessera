@@ -9,7 +9,7 @@ term.setCursorBlink(false)
 local settingsFile = "tessera_settings"
 local leaderboardFile = "tessera_local_leaderboard"
 
--- *** Константа максимальной длины имени
+
 local MAX_NAME_LEN = 6
 
 local function safeOpen(path, mode)
@@ -1398,4 +1398,5 @@ end
 
 music:stop()
 term.setBackgroundColor(colors.black); term.clear(); term.setCursorPos(1,1)
+
 
