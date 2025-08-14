@@ -14,7 +14,7 @@ if not successMain then
 end
 
 for _, file in ipairs(musicFiles) do
-    print("Скачиваем " .. file .. "...")
+    print("Downloading " .. file .. "...")
     local success = shell.run("wget", baseUrl .. file, "Tessera/" .. file)
     if not success then
         print("Couldn't download " .. file .. ". Please try again later.")
