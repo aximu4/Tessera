@@ -1,40 +1,14 @@
-local base = "https://raw.githubusercontent.com/aximu4/Tessera/"
-local files = {
-  "Tessera.lua",
-  "music-a.nbs",
-  "music-b.nbs",
-  "music-c.nbs",
-  "score.nbs"
-}
+local repo = "aximu4/Tessera"
+local rawBase = "https://raw.githubusercontent.com/" .. repo .. "/main/"
 
-local function fetch(url, tries)
-  tries = tries or 1
-  local res = http.get(url)
-  if res then
-    local data = res.readAll()
-    res.close()
-    return data
-  end
-  if tries < 3 then
-    sleep(0.5)
-    return fetch(url, tries + 1)
-  end
-  error("failed: "..url)
+shell.run("wget", rawBase .. "Tessera.lua", "Tessera.lua")
+
+
+shell.run("mkdir", "Tessera")
+local files = {"music-a.nbs", "music-b.nbs", "music-c.nbs", "score.nbs"}
+for _, fname in ipairs(files) do
+  local url = rawBase .. "Tessera/" .. fname
+  shell.run("wget", url, "Tessera/" .. fname)
 end
 
-if not fs.exists("Tessera") then
-  fs.makeDir("Tessera")
-end
-
-for _, f in ipairs(files) do
-  local data = fetch(base .. f)
-  local h = fs.open("Tessera/" .. f, "w")
-  h.write(data)
-  h.close()
-end
-
-local h = fs.open("tessera", "w")
-h.write('shell.run("Tessera/tetris.lua")')
-h.close()
-
-print("ok")
+print("Tessera successfully installed! Run 'Tessera' to play.")
