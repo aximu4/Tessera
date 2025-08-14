@@ -1,2 +1,2 @@
 # Tessera
-A fun game for ComputerCrafts.
+A fun game for the ComputerCrafts mod. (WIP)
