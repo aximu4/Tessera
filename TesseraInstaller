@@ -1,7 +1,7 @@
 local baseURL = "https://raw.githubusercontent.com/aximu4/Tessera/master/"
 
 local files = {
-    "tetris.lua",
+    "Tessera.lua",
     "nbs_player.lua",
     "music-a.nbs",
     "music-b.nbs",
@@ -31,7 +31,7 @@ for _, file in ipairs(files) do
 end
 
 local f = fs.open("tessera", "w")
-f.write([[shell.run("Tessera/tetris.lua")]])
+f.write([[shell.run("Tessera/Tessera.lua")]])
 f.close()
 
 print("Tessera installed! Type 'tessera' to play. :D")
