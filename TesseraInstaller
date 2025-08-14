@@ -1,0 +1,37 @@
+local baseURL = "https://raw.githubusercontent.com/USER/REPO/BRANCH/Tessera/"
+
+local files = {
+    "tetris.lua",
+    "nbs_player.lua",
+    "music-a.nbs",
+    "music-b.nbs",
+    "music-c.nbs",
+    "score.nbs"
+}
+
+print("Installing Tessera...")
+
+if not fs.exists("Tessera") then
+    fs.makeDir("Tessera")
+end
+
+for _, file in ipairs(files) do
+    local url = baseURL .. file
+    local path = "Tessera/" .. file
+    print("Downloading "..file.."...")
+    local res = http.get(url)
+    if res then
+        local f = fs.open(path, "wb")
+        f.write(res.readAll())
+        f.close()
+        res.close()
+    else
+        print("Failed to download "..file)
+    end
+end
+
+local f = fs.open("tessera", "w")
+f.write([[shell.run("Tessera/tetris.lua")]])
+f.close()
+
+print("Tessera installed! Type 'tessera' to play. :D")
