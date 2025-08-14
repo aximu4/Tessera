@@ -1,37 +1,40 @@
-local baseURL = "https://raw.githubusercontent.com/aximu4/Tessera/"
-
+local base = "https://raw.githubusercontent.com/aximu4/Tessera/"
 local files = {
-    "Tessera.lua",
-    "nbs_player.lua",
-    "music-a.nbs",
-    "music-b.nbs",
-    "music-c.nbs",
-    "score.nbs"
+  "Tessera.lua",
+  "music-a.nbs",
+  "music-b.nbs",
+  "music-c.nbs",
+  "score.nbs"
 }
 
-print("Installing Tessera...")
+local function fetch(url, tries)
+  tries = tries or 1
+  local res = http.get(url)
+  if res then
+    local data = res.readAll()
+    res.close()
+    return data
+  end
+  if tries < 3 then
+    sleep(0.5)
+    return fetch(url, tries + 1)
+  end
+  error("failed: "..url)
+end
 
 if not fs.exists("Tessera") then
-    fs.makeDir("Tessera")
+  fs.makeDir("Tessera")
 end
 
-for _, file in ipairs(files) do
-    local url = baseURL .. file
-    local path = "Tessera/" .. file
-    print("Downloading "..file.."...")
-    local res = http.get(url)
-    if res then
-        local f = fs.open(path, "wb")
-        f.write(res.readAll())
-        f.close()
-        res.close()
-    else
-        print("Failed to download "..file)
-    end
+for _, f in ipairs(files) do
+  local data = fetch(base .. f)
+  local h = fs.open("Tessera/" .. f, "w")
+  h.write(data)
+  h.close()
 end
 
-local f = fs.open("tessera", "w")
-f.write([[shell.run("Tessera/Tessera.lua")]])
-f.close()
+local h = fs.open("tessera", "w")
+h.write('shell.run("Tessera/tetris.lua")')
+h.close()
 
-print("Tessera installed! Type 'tessera' to play. :D")
+print("ok")
