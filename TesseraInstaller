@@ -1,4 +1,4 @@
-local baseURL = "https://raw.githubusercontent.com/aximu4/Tessera/main/Tessera/"
+local baseURL = "https://raw.githubusercontent.com/aximu4/Tessera/master/"
 
 local files = {
     "tetris.lua",
