@@ -29,8 +29,7 @@ local function safeSerialize(t)
 end
 
 local function migrateSettings(t)
-  -- Старый формат: musicOn(bool) + musicMode("A"/"B"/"C")
-  -- Новый: music ("A","B","C","Off")
+
   if t.music == nil then
     local on = (t.musicOn ~= false)
     local mode = t.musicMode or "A"
@@ -43,8 +42,8 @@ end
 
 local function safeLoadSettings()
   local def = {
-    musicVolume = 80,     -- 0..100
-    startLevel = 0,       -- NES старт уровни 0..9 (как в оригинале меню)
+    musicVolume = 80,    
+    startLevel = 0,       
     music = "A",          -- "A" | "B" | "C" | "Off"
     rebinds = {
       left = keys.left,
@@ -125,7 +124,7 @@ local function nes_seconds_per_cell(lvl)
   return nes_frames_per_cell(lvl) / 60
 end
 
--- Вычисление текущего уровня по правилам NES (порог первого апа зависит от стартового)
+
 local function nes_current_level(start_level, total_lines)
   local sl = math.max(0, tonumber(start_level) or 0)
   local lines = math.max(0, tonumber(total_lines) or 0)
@@ -225,7 +224,7 @@ local function buildSongFromBlob(blob)
     song.original     = rStr32()
     song.description  = rStr32()
     song.tempo_h      = rU16() or 1000
-    -- skip metadata (best-effort)
+
     rB(); rB(); rB()
     rI32(); rI32(); rI32(); rI32(); rI32()
     rStr32()
@@ -775,7 +774,7 @@ local function newGameState()
   gs.linesCleared = 0
   gs.startLevelBase = math.max(0, math.floor(settings.startLevel or 0))
   gs.level = gs.startLevelBase
-  -- Гравитация NES: фиксированный тик + аккумулятор
+
   gs.gravityTimerId = nil
   gs.gravityLastClock = os.clock()
   gs.gravityAccum = 0
@@ -825,7 +824,7 @@ local function placePiece(gs, px, py, shape, id)
   end
 end
 
--- NES SCORING: 1=40,2=100,3=300,4=1200 times (level+1)
+
 local NES_LINE_POINTS = { [1]=40, [2]=100, [3]=300, [4]=1200 }
 
 local function clearLines(gs)
@@ -850,12 +849,12 @@ local function clearLines(gs)
   if removed > 0 then
     gs.linesCleared = gs.linesCleared + removed
     local base = NES_LINE_POINTS[removed] or 0
-    gs.score = gs.score + base * (gs.level + 1)  -- NES: (level+1)
+    gs.score = gs.score + base * (gs.level + 1)  
     gs.level = nes_current_level(gs.startLevelBase, gs.linesCleared)
   end
 end
 
--- Сброс/перевооружение гравитации (NES)
+
 local GRAVITY_TICK = 0.05
 local function gravityReset(gs)
   gs.gravityLastClock = os.clock()
@@ -893,7 +892,7 @@ local function spawnPiece(gs)
       end
     end
   end
-  -- после успешного спауна сбрасываем аккумулятор падения
+
   gravityReset(gs)
   return true
 end
@@ -935,7 +934,7 @@ local function getActionForKey(k)
 end
 
 -- ------------------------------
--- NES rotation helpers (NO KICKS). 180° оставлен.
+-- Rotation helpers
 -- ------------------------------
 local function tryRotateNES(gs, targetRot)
   local lst = gs.current.shapeList
@@ -958,7 +957,7 @@ end
 -- Menus (Settings, Pause)
 -- ------------------------------
 local function settingsMenu()
-  -- Музыка SCORE не перезапускается — только обслуживаем таймеры
+ 
   local opts = {
     {label="Music Volume: ", type="number", key="musicVolume", min=0, max=100, step=1},
     {label="Start Level: ", type="number", key="startLevel", min=0, max=9, step=1},
@@ -1128,13 +1127,13 @@ local function gameLoop()
         end
         redrawAll(gs)
       elseif action=="down" then
-        -- NES soft drop: +1 очко за клетку, если двинулось
+
         if not collides(gs, gs.current.x, gs.current.y+1, gs.current.shape) then
           gs.current.y = gs.current.y + 1
           gs.score = gs.score + 1
           gs.isLocking = false; gs.lockTimerId = nil
           redrawAll(gs); drawInfo(gs)
-          -- сбрасываем аккумулятор, чтобы не было двойного шага сразу после ручного
+ 
           gravityReset(gs)
         else
           if not gs.isLocking then gs.lockTimerId = os.startTimer(0.5); gs.isLocking = true end
@@ -1157,7 +1156,7 @@ local function gameLoop()
         redrawAll(gs); drawInfo(gs)
 
       elseif action=="drop" then
-        -- Ускоренный хард-дроп (не-канон для NES), +2 очка за клетку как в твоей версии
+     
         local moved = 0
         while not collides(gs, gs.current.x, gs.current.y+1, gs.current.shape) do
           gs.current.y = gs.current.y + 1; moved = moved + 1
@@ -1172,7 +1171,7 @@ local function gameLoop()
 
       elseif action=="pause" then
         gs.paused = true
-        -- музыка: переключаемся на SCORE, запоминая позицию игровой
+     
         local savedTick = music.tick
         local savedOpt = music.current
         music:stop()
@@ -1184,7 +1183,7 @@ local function gameLoop()
           local choice = pauseMenu()
           if choice == "Continue" then
             gs.paused = false
-            -- переармируем lockTimer если стоим на земле
+          
             gs.lockTimerId = nil
             gs.isLocking = false
             if collides(gs, gs.current.x, gs.current.y+1, gs.current.shape) then
@@ -1192,7 +1191,7 @@ local function gameLoop()
               gs.isLocking = true
             end
 
-            -- NES gravity: просто сбрасываем аккумулятор и запускаем тик
+        
             gravityReset(gs)
             gravityArm(gs)
 
@@ -1224,10 +1223,10 @@ local function gameLoop()
       end
 
     elseif ev=="timer" then
-      -- NES gravity tick
+      -- gravity tick
       if a == gs.gravityTimerId then
         gs.gravityTimerId = nil
-        -- Обслуживаем гравитацию только если не пауза
+
         local now = os.clock()
         local dt = now - (gs.gravityLastClock or now)
         gs.gravityLastClock = now
@@ -1239,7 +1238,7 @@ local function gameLoop()
           if spc > 0 then steps = math.floor(gs.gravityAccum / spc) end
           if steps > 0 then
             gs.gravityAccum = gs.gravityAccum - steps * spc
-            if steps > 20 then steps = 20 end -- защита от больших рывков
+            if steps > 20 then steps = 20 end 
             local needRedraw = false
             for i=1,steps do
               if not collides(gs, gs.current.x, gs.current.y+1, gs.current.shape) then
@@ -1258,7 +1257,7 @@ local function gameLoop()
             if needRedraw then redrawAll(gs); drawInfo(gs) end
           end
         else
-          -- пауза: не копим dt
+        
           gravityReset(gs)
         end
         gravityArm(gs)
@@ -1280,7 +1279,7 @@ local function gameLoop()
         music:onTimer(a, gs.paused)
       end
 
-      -- Динамика музыки у верхних рядов (оставим)
+    
       local danger = false
       do
         for y=1,5 do
@@ -1357,7 +1356,7 @@ local function gameOverScreen(score, lines, level, startLevel)
   local w2,h2 = term.getSize()
   local midY = math.floor(h2/2)
 
-  -- гарантированно score.nbs
+
   music:stop(); music:setSpeedMul(1.0); music:resetPosition(); music:playScore(true)
 
   local function centerX(s) return math.floor((w2 - string.len(s))/2)+1 end
@@ -1399,3 +1398,4 @@ end
 
 music:stop()
 term.setBackgroundColor(colors.black); term.clear(); term.setCursorPos(1,1)
+
