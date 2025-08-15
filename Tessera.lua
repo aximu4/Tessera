@@ -1,16 +1,42 @@
--- Tessera
+-- Tessera code :3 (i will make it shorter eventually..)
 
--- ------------------------------
--- Utility / persistence
--- ------------------------------
 math.randomseed(os.time() + math.floor(os.clock()*1000))
 term.setCursorBlink(false)
 
 local settingsFile = "tessera_settings"
 local leaderboardFile = "tessera_local_leaderboard"
-
-
 local MAX_NAME_LEN = 6
+
+local rootTerm = term.current()
+local screen
+local frameDepth = 0
+
+local function createScreen()
+  local rw, rh = rootTerm.getSize()
+  screen = window.create(rootTerm, 1, 1, rw, rh, true)
+  screen.setVisible(false)
+  term.redirect(screen)
+end
+
+local function beginFrame()
+  frameDepth = frameDepth + 1
+  if frameDepth == 1 and screen then screen.setVisible(false) end
+end
+
+local function endFrame()
+  if frameDepth > 0 then
+    frameDepth = frameDepth - 1
+    if frameDepth == 0 and screen then screen.setVisible(true) end
+  end
+end
+
+local function handleResize(recalcLayoutFn)
+  term.redirect(rootTerm)
+  createScreen()
+  if recalcLayoutFn then recalcLayoutFn() end
+end
+
+createScreen()
 
 local function safeOpen(path, mode)
   local ok, h = pcall(fs.open, path, mode)
@@ -29,7 +55,6 @@ local function safeSerialize(t)
 end
 
 local function migrateSettings(t)
-
   if t.music == nil then
     local on = (t.musicOn ~= false)
     local mode = t.musicMode or "A"
@@ -37,14 +62,18 @@ local function migrateSettings(t)
     t.musicOn = nil
     t.musicMode = nil
   end
+  if t.menuMusic == nil then
+    t.menuMusic = "On"
+  end
   return t
 end
 
 local function safeLoadSettings()
   local def = {
-    musicVolume = 80,    
-    startLevel = 0,       
-    music = "A",          -- "A" | "B" | "C" | "Off"
+    musicVolume = 80,
+    startLevel = 0,
+    music = "A",
+    menuMusic = "On",
     rebinds = {
       left = keys.left,
       right = keys.right,
@@ -80,16 +109,19 @@ end
 
 local settings = migrateSettings(safeLoadSettings())
 
--- ------------------------------
--- Screen / layout
--- ------------------------------
-local w, h = term.getSize()
+local w, h = screen.getSize()
 local fieldW, fieldH = 10, 20
 local cellW = 2
 local startX = math.floor((w - fieldW*cellW)/2)+1
 local startY = math.floor((h - fieldH)/2)+1
 local bgColor = colors.black
 local fgColor = colors.white
+
+local function recalcLayout()
+  w, h = screen.getSize()
+  startX = math.floor((w - fieldW*cellW)/2)+1
+  startY = math.floor((h - fieldH)/2)+1
+end
 
 local function keyName(k)
   if type(k)~="number" then return tostring(k) end
@@ -98,9 +130,6 @@ local function keyName(k)
   return tostring(k)
 end
 
--- ------------------------------
--- NES gravity & level progression
--- ------------------------------
 local function nes_frames_per_cell(lvl)
   if lvl <= 0 then return 48
   elseif lvl == 1 then return 43
@@ -124,7 +153,6 @@ local function nes_seconds_per_cell(lvl)
   return nes_frames_per_cell(lvl) / 60
 end
 
-
 local function nes_current_level(start_level, total_lines)
   local sl = math.max(0, tonumber(start_level) or 0)
   local lines = math.max(0, tonumber(total_lines) or 0)
@@ -139,7 +167,7 @@ local function nes_current_level(start_level, total_lines)
     first_threshold = 120
   elseif sl == 18 then
     first_threshold = 130
-  else -- sl >= 19
+  else
     first_threshold = 140
   end
   if lines < first_threshold then
@@ -149,9 +177,6 @@ local function nes_current_level(start_level, total_lines)
   end
 end
 
--- ------------------------------
--- Embedded NBS parser (from nbs_player.lua, adapted for scheduling)
--- ------------------------------
 local function findSpeaker()
   local ok, s = pcall(function() if peripheral then return peripheral.find("speaker") end end)
   if ok and s then return s end
@@ -163,7 +188,6 @@ local function vol01()
   return math.max(0, math.min(1, (settings.musicVolume or 80)/100))
 end
 
--- nbs_player.lua core
 local function readAll(p)
   local f = safeOpen(p, "rb") or safeOpen(p, "r")
   if not f then return nil, "cannot open" end
@@ -286,9 +310,6 @@ local function buildSongFromBlob(blob)
   return song
 end
 
--- ------------------------------
--- Music manager (accelerated)
--- ------------------------------
 local Music = {}
 Music.__index = Music
 
@@ -301,13 +322,11 @@ function Music.new()
     SCORE = { path = "Tessera/score.nbs", song = nil},
   }
   self.current = "A"
-  -- frame timer state
   self.frameTimerId = nil
   self.framePeriod = 0.05
   self.lastTime = 0
   self.accum = 0
   self.maxTicksPerUpdate = 16
-
   self.playing = false
   self.tick = 1
   self.speedMul = 1.0
@@ -332,7 +351,7 @@ function Music:getSongSpeed(tag)
   return self.perSongMul[tag] or 1.0
 end
 
-function Music:setOption(opt) -- "A","B","C","Off"
+function Music:setOption(opt)
   self._lastMode = self.current
   if opt == "A" or opt == "B" or opt == "C" then
     self.current = opt
@@ -349,19 +368,16 @@ function Music:load(tag)
   if not blob then return end
   local song = buildSongFromBlob(blob)
   if not song then return end
-
   local slices = {}
   local maxTick = 0
   for tick, arr in pairs(song.notesByTick) do
     slices[tick] = arr
     if tick > maxTick then maxTick = tick end
   end
-
-  local tempo_h = tonumber(song.tempo_h) or 1000    -- hundredths of TPS
+  local tempo_h = tonumber(song.tempo_h) or 1000
   local tps = tempo_h / 100.0
   if tps <= 0 then tps = 10 end
   local spt = (1.0 / tps)
-
   t.song = {
     tempo_h     = tempo_h,
     tps         = tps,
@@ -434,40 +450,32 @@ function Music:onTimer(id, isPaused)
   if id ~= self.frameTimerId then return end
   self.frameTimerId = nil
   if not self.playing then return end
-
   local tag = isPaused and "SCORE" or (self.current == "Off" and "SCORE" or self.current)
   self:load(tag)
   local t = self.tracks[tag]
   if not t or not t.song then return end
   local s = t.song
-
   local now = os.clock()
   local dt = now - (self.lastTime or now)
   if dt < 0 or dt > 1 then dt = self.framePeriod end
   self.lastTime = now
   self.accum = (self.accum or 0) + dt
-
   local spt = self:_effectiveSPT(tag)
   if spt <= 0 then spt = 0.0001 end
-
   local processed = 0
   while self.accum >= spt and processed < self.maxTicksPerUpdate do
     local slice = s.slices[self.tick]
     self:_playSlice(slice)
-
     self.tick = self.tick + 1
     if self.tick > (s.lengthTicks or 0) then
       self.tick = 0
     end
-
     self.accum = self.accum - spt
     processed = processed + 1
   end
-
   if processed >= self.maxTicksPerUpdate and self.accum > spt * 2 then
     self.accum = spt
   end
-
   self:_scheduleFrame()
 end
 
@@ -478,29 +486,16 @@ end
 local music = Music.new()
 music:setOption(settings.music or "A")
 
--- ------------------------------
--- Game data (palettes, pieces)
--- ------------------------------
-local palettes = { 
--- L0 
-{ I=colors.cyan, J=colors.blue, L=colors.lime, O=colors.green, S=colors.pink, T=colors.red, Z=colors.orange }, 
--- L1 
-{ I=colors.lime, J=colors.green, L=colors.lightBlue, O=colors.cyan, S=colors.pink, T=colors.magenta, Z=colors.red }, 
--- L2 
-{ I=colors.pink, J=colors.magenta, L=colors.lime, O=colors.green, S=colors.lightBlue,T=colors.blue, Z=colors.red }, 
--- L3 
-{ I=colors.blue, J=colors.lightBlue, L=colors.lime, O=colors.green, S=colors.pink, T=colors.magenta, Z=colors.red }, 
--- L4 
-{ I=colors.green, J=colors.lime, L=colors.cyan, O=colors.lightBlue,S=colors.pink, T=colors.magenta, Z=colors.red }, 
--- L5 
-{ I=colors.orange, J=colors.red, L=colors.lightGray,O=colors.gray, S=colors.pink, T=colors.purple, Z=colors.magenta }, 
--- L6 
-{ I=colors.magenta, J=colors.purple, L=colors.orange, O=colors.red, S=colors.lightBlue,T=colors.blue, Z=colors.cyan }, 
--- L7 
-{ I=colors.blue, J=colors.cyan, L=colors.orange, O=colors.brown, S=colors.red, T=colors.orange, Z=colors.yellow }, 
--- L8 
-{ I=colors.orange, J=colors.red, L=colors.magenta,O=colors.purple, S=colors.blue, T=colors.cyan, Z=colors.lime }, 
--- L9 
+local palettes = {
+{ I=colors.cyan, J=colors.blue, L=colors.lime, O=colors.green, S=colors.pink, T=colors.red, Z=colors.orange },
+{ I=colors.lime, J=colors.green, L=colors.lightBlue, O=colors.cyan, S=colors.pink, T=colors.magenta, Z=colors.red },
+{ I=colors.pink, J=colors.magenta, L=colors.lime, O=colors.green, S=colors.lightBlue,T=colors.blue, Z=colors.red },
+{ I=colors.blue, J=colors.lightBlue, L=colors.lime, O=colors.green, S=colors.pink, T=colors.magenta, Z=colors.red },
+{ I=colors.green, J=colors.lime, L=colors.cyan, O=colors.lightBlue,S=colors.pink, T=colors.magenta, Z=colors.red },
+{ I=colors.orange, J=colors.red, L=colors.lightGray,O=colors.gray, S=colors.pink, T=colors.purple, Z=colors.magenta },
+{ I=colors.magenta, J=colors.purple, L=colors.orange, O=colors.red, S=colors.lightBlue,T=colors.blue, Z=colors.cyan },
+{ I=colors.blue, J=colors.cyan, L=colors.orange, O=colors.brown, S=colors.red, T=colors.orange, Z=colors.yellow },
+{ I=colors.orange, J=colors.red, L=colors.magenta,O=colors.purple, S=colors.blue, T=colors.cyan, Z=colors.lime },
 { I=colors.orange, J=colors.yellow, L=colors.orange, O=colors.yellow, S=colors.orange, T=colors.yellow, Z=colors.orange }, }
 
 local function paletteForLevel(l) return palettes[(l % #palettes) + 1] end
@@ -547,9 +542,6 @@ local pieces = {
 local order = {"I","J","L","O","S","T","Z"}
 local function shuffle(t) for i=#t,2,-1 do local j = math.random(1,i); t[i],t[j] = t[j],t[i] end end
 
--- ------------------------------
--- Local leaderboard (NES-style)
--- ------------------------------
 local function loadLocalLeaderboard()
   if not fs.exists(leaderboardFile) then return {} end
   local f = safeOpen(leaderboardFile, "r")
@@ -571,7 +563,6 @@ local function insertLocalEntry(name, score, level)
   if nm == "" then nm = string.rep("-", MAX_NAME_LEN) end
   local t = loadLocalLeaderboard()
   table.insert(t, { name = nm, score = tonumber(score) or 0, level = tonumber(level) or 0, date = os.date("%Y-%m-%d") })
-  -- keep top 10 by score desc, then level desc
   table.sort(t, function(a,b)
     if a.score ~= b.score then return a.score > b.score end
     return a.level > b.level
@@ -581,20 +572,19 @@ local function insertLocalEntry(name, score, level)
 end
 
 local function drawNESLeaderboard()
+  beginFrame()
   local entries = loadLocalLeaderboard()
   term.setBackgroundColor(bgColor); term.clear()
   term.setTextColor(colors.white)
   local title = "TOP SCORES"
   local midX = math.floor((w - #title)/2)+1
   term.setCursorPos(midX, 2); term.write(title)
-
   local boxW = 28
   local bx = math.floor((w - boxW)/2)+1
   local top = 4
   term.setCursorPos(bx, top); term.write("+"..string.rep("-", boxW-2).."+")
   for i=1,12 do term.setCursorPos(bx, top+i); term.write("|"..string.rep(" ", boxW-2).."|") end
   term.setCursorPos(bx, top+13); term.write("+"..string.rep("-", boxW-2).."+")
-
   term.setCursorPos(bx+2, top+1); term.write("RANK NAME      SCORE  LVL")
   for i=1,10 do
     local e = entries[i]
@@ -610,27 +600,28 @@ local function drawNESLeaderboard()
       term.write(string.format("%2d   %-"..MAX_NAME_LEN.."s  %7s  %2s", i, string.rep("-", MAX_NAME_LEN), "-------", "--"))
     end
   end
-
   term.setTextColor(colors.lightGray)
   local hint = "Press Q to return"
   term.setCursorPos(math.floor((w-#hint)/2)+1, top+15)
   term.write(hint)
   term.setTextColor(colors.white)
-
-  -- Выход только по Q, музыка SCORE продолжает играть
+  endFrame()
   while true do
     local ev,a = os.pullEvent()
     if ev=="key" then
       if a==keys.q then break end
     elseif ev=="timer" then
       music:onTimer(a, true)
+    elseif ev=="term_resize" then
+      handleResize(function()
+        recalcLayout()
+        drawNESLeaderboard()
+      end)
+      return
     end
   end
 end
 
--- ------------------------------
--- Drawing helpers
--- ------------------------------
 local function drawCellOnTerm(fx, fy, id, level)
   local cx = startX + (fx-1)*cellW
   local cy = startY + (fy-1)
@@ -668,13 +659,13 @@ local function drawField(gs)
 end
 
 local function drawInfo(gs)
-  term.setBackgroundColor(bgColor); term.setTextColor(fgColor)
+  beginFrame()
+  term.setBackgroundColor(bgColor)
+  term.setTextColor(fgColor)
   local infoX = startX + fieldW*cellW + 3
   local infoY = startY
   term.setCursorPos(infoX, infoY+1);     term.write("Lines: "..gs.linesCleared.." ")
   term.setCursorPos(infoX, infoY+2);     term.write("Score: "..gs.score.." ")
-
-  -- Next preview box
   local boxCells = 4
   local previewX = infoX
   local previewY = infoY+5
@@ -689,7 +680,6 @@ local function drawInfo(gs)
   end
   term.setCursorPos(previewX-1, previewY+boxCells); term.write("+"..string.rep("-", boxCells*cellW).."+" )
   term.setBackgroundColor(bgColor)
-
   if gs.nextPiece then
     local shape = gs.nextPiece.shapeList[gs.nextPiece.rot] or gs.nextPiece.shape
     local minR,maxR,minC,maxC = getShapeBounds(shape)
@@ -710,11 +700,11 @@ local function drawInfo(gs)
       end
     end
   end
-
   term.setTextColor(colors.lightGray)
   term.setCursorPos(previewX, previewY + boxCells + 1); term.write("P - Pause")
   term.setTextColor(fgColor)
   term.setCursorPos(previewX, previewY + boxCells + 2); term.write("Level: "..gs.level.." ")
+  endFrame()
 end
 
 local function getGhostY(gs)
@@ -760,9 +750,6 @@ local function drawGhost(gs)
   term.setTextColor(fgColor); term.setBackgroundColor(bgColor)
 end
 
--- ------------------------------
--- Game state / logic
--- ------------------------------
 local function newGameState()
   local gs = {}
   gs.field = {}
@@ -774,11 +761,9 @@ local function newGameState()
   gs.linesCleared = 0
   gs.startLevelBase = math.max(0, math.floor(settings.startLevel or 0))
   gs.level = gs.startLevelBase
-
   gs.gravityTimerId = nil
   gs.gravityLastClock = os.clock()
   gs.gravityAccum = 0
-  -- Lock delay
   gs.lockTimerId = nil
   gs.paused = false
   gs.isLocking = false
@@ -824,7 +809,6 @@ local function placePiece(gs, px, py, shape, id)
   end
 end
 
-
 local NES_LINE_POINTS = { [1]=40, [2]=100, [3]=300, [4]=1200 }
 
 local function clearLines(gs)
@@ -845,15 +829,13 @@ local function clearLines(gs)
   end
   for y=1,writeRow do newField[y] = {} for x=1,fieldW do newField[y][x] = 0 end end
   gs.field = newField
-
   if removed > 0 then
     gs.linesCleared = gs.linesCleared + removed
     local base = NES_LINE_POINTS[removed] or 0
-    gs.score = gs.score + base * (gs.level + 1)  
+    gs.score = gs.score + base * (gs.level + 1)
     gs.level = nes_current_level(gs.startLevelBase, gs.linesCleared)
   end
 end
-
 
 local GRAVITY_TICK = 0.05
 local function gravityReset(gs)
@@ -892,12 +874,11 @@ local function spawnPiece(gs)
       end
     end
   end
-
   gravityReset(gs)
   return true
 end
 
-function drawCurrent(gs)
+local function drawCurrent(gs)
   for sy=1,#gs.current.shape do
     for sx=1,#gs.current.shape[sy] do
       if gs.current.shape[sy][sx] == 1 then
@@ -909,11 +890,13 @@ function drawCurrent(gs)
 end
 
 local function redrawAll(gs)
+  beginFrame()
   term.setBackgroundColor(bgColor); term.clear()
   drawField(gs)
   drawGhost(gs)
   drawCurrent(gs)
   drawInfo(gs)
+  endFrame()
 end
 
 local function getActionForKey(k)
@@ -933,9 +916,6 @@ local function getActionForKey(k)
   return nil
 end
 
--- ------------------------------
--- Rotation helpers
--- ------------------------------
 local function tryRotateNES(gs, targetRot)
   local lst = gs.current.shapeList
   local cnt = #lst
@@ -953,15 +933,12 @@ local function tryRotateNES(gs, targetRot)
   return false
 end
 
--- ------------------------------
--- Menus (Settings, Pause)
--- ------------------------------
 local function settingsMenu()
- 
   local opts = {
     {label="Music Volume: ", type="number", key="musicVolume", min=0, max=100, step=1},
     {label="Start Level: ", type="number", key="startLevel", min=0, max=9, step=1},
     {label="Music: ", type="enum", key="music", vals={"A","B","C","Off"}},
+    {label="Menu Music: ", type="enum", key="menuMusic", vals={"On","Off"}},
     {label="Left Key: ", type="key", key="left"},
     {label="Right Key: ", type="key", key="right"},
     {label="Down Key: ", type="key", key="down"},
@@ -973,14 +950,17 @@ local function settingsMenu()
     {label="", type="action", key="back"}
   }
   local sel = 1
-
   local function draw()
+    beginFrame()
     term.setBackgroundColor(bgColor); term.clear()
     term.setTextColor(colors.white)
     local title = "SETTINGS"
     term.setCursorPos(math.floor((w - #title)/2)+1, 2); term.write(title)
     local sx = math.floor((w - 40)/2)+1
-    local startLine = 5
+    local startLine = 4
+    term.setTextColor(colors.lightGray)
+    local hint = "Left - Backwards, Right - Forwards. "
+    term.setCursorPos(math.floor((w - #hint)/2)+1, 3); term.write(hint)
     for i=1,#opts do
       local o = opts[i]
       local label = o.label..""
@@ -989,44 +969,60 @@ local function settingsMenu()
       elseif o.type=="enum" then valueText = tostring(settings[o.key])
       elseif o.type=="key" then valueText = keyName(settings.rebinds[o.key])
       elseif o.type=="action" then valueText = "Back" end
-
       term.setCursorPos(sx, startLine + i - 1)
       if i==sel then term.setTextColor(colors.white) else term.setTextColor(colors.lightGray) end
       term.write(label..valueText)
     end
     term.setTextColor(fgColor)
+    endFrame()
   end
-
+  local function changeNumber(o, dir)
+    local change = (dir==1) and o.step or -o.step
+    settings[o.key] = math.max(o.min, math.min(o.max, (settings[o.key] or o.min) + change))
+    safeSaveSettings(settings)
+  end
+  local function changeEnum(o, dir)
+    local vals = o.vals
+    local idx = 1
+    for i,v in ipairs(vals) do if v == settings[o.key] then idx = i end end
+    if dir==1 then idx = (idx) % #vals + 1 else idx = (idx-2) % #vals + 1 end
+    settings[o.key] = vals[idx]
+    safeSaveSettings(settings)
+    if o.key=="menuMusic" then
+      if settings.menuMusic == "Off" then
+        music:stop()
+      else
+        music:stop()
+        music:setSpeedMul(1.0)
+        music:resetPosition()
+        music:playScore(true)
+      end
+    end
+  end
   draw()
   while true do
     local ev,a = os.pullEvent()
     if ev=="key" then
       if a==keys.up then sel = (sel-2) % #opts + 1; draw()
       elseif a==keys.down then sel = (sel) % #opts + 1; draw()
-      elseif a==keys.left or a==keys.right then
+      elseif a==keys.left or a==keys.right or a==keys.enter or a==keys.leftShift or a==keys.rightShift then
         local o = opts[sel]
+        local isForward = (a==keys.right or a==keys.enter)
+        local isBackward = (a==keys.left or a==keys.leftShift or a==keys.rightShift)
         if o.type=="number" then
-          local change = (a==keys.left) and -o.step or o.step
-          settings[o.key] = math.max(o.min, math.min(o.max, (settings[o.key] or o.min) + change))
-          safeSaveSettings(settings)
+          if isForward then changeNumber(o, 1) elseif isBackward then changeNumber(o, -1) end
           draw()
         elseif o.type=="enum" then
-          local vals = o.vals
-          local idx = 1
-          for i,v in ipairs(vals) do if v == settings[o.key] then idx = i end end
-          if a==keys.left then idx = (idx-2) % #vals + 1 else idx = (idx) % #vals + 1 end
-          settings[o.key] = vals[idx]
-          safeSaveSettings(settings)
+          if isForward then changeEnum(o, 1) elseif isBackward then changeEnum(o, -1) end
           draw()
-        end
-      elseif a==keys.enter then
-        local o = opts[sel]
-        if o.type=="action" and o.key=="back" then
+        elseif o.type=="action" and o.key=="back" and a==keys.enter then
           break
-        elseif o.type=="key" then
+        elseif o.type=="key" and a==keys.enter then
+          beginFrame()
           term.setBackgroundColor(bgColor); term.setTextColor(colors.white)
           local prompt = "Press new key for "..o.label
           term.setCursorPos(math.floor((w - string.len(prompt))/2)+1, h-2); term.write(prompt)
+          endFrame()
           while true do
             local ev2,k2 = os.pullEvent()
             if ev2=="key" then
@@ -1037,6 +1033,8 @@ local function settingsMenu()
               break
             elseif ev2=="timer" then
               music:onTimer(k2, true)
+            elseif ev2=="term_resize" then
+              handleResize(function() recalcLayout(); draw() end)
             end
           end
           draw()
@@ -1046,6 +1044,8 @@ local function settingsMenu()
       end
     elseif ev=="timer" then
       music:onTimer(a, true)
+    elseif ev=="term_resize" then
+      handleResize(function() recalcLayout(); draw() end)
     end
   end
 end
@@ -1054,6 +1054,7 @@ local function pauseMenu()
   local opts = {"Continue","Top Scores","Settings","Exit"}
   local sel = 1
   local function draw()
+    beginFrame()
     term.setBackgroundColor(bgColor); term.clear()
     term.setTextColor(colors.white)
     local title = "PAUSED"
@@ -1067,6 +1068,7 @@ local function pauseMenu()
       term.write(display)
     end
     term.setTextColor(fgColor)
+    endFrame()
   end
   draw()
   while true do
@@ -1078,13 +1080,12 @@ local function pauseMenu()
       elseif a==settings.rebinds.pause or a==keys.p then return "Continue" end
     elseif ev=="timer" then
       music:onTimer(a, true)
+    elseif ev=="term_resize" then
+      handleResize(function() recalcLayout(); draw() end)
     end
   end
 end
 
--- ------------------------------
--- Main game loop
--- ------------------------------
 local function startNewGameFromState(gs)
   for y=1,fieldH do gs.field[y] = {} for x=1,fieldW do gs.field[y][x] = 0 end end
   gs.bag = {}; for i=1,#order do gs.bag[i] = order[i] end; shuffle(gs.bag)
@@ -1100,7 +1101,6 @@ local function startNewGameFromState(gs)
   gs.isLocking = false
   spawnPiece(gs)
   gravityStart(gs)
-  -- music
   music:setOption(settings.music or "A")
   music:setSpeedMul(1.0)
   music:resetPosition()
@@ -1111,7 +1111,6 @@ local function gameLoop()
   local gs = newGameState()
   startNewGameFromState(gs)
   redrawAll(gs)
-
   while true do
     local ev,a,b = os.pullEvent()
     if ev=="key" then
@@ -1127,18 +1126,15 @@ local function gameLoop()
         end
         redrawAll(gs)
       elseif action=="down" then
-
         if not collides(gs, gs.current.x, gs.current.y+1, gs.current.shape) then
           gs.current.y = gs.current.y + 1
           gs.score = gs.score + 1
           gs.isLocking = false; gs.lockTimerId = nil
-          redrawAll(gs); drawInfo(gs)
- 
+          redrawAll(gs)
           gravityReset(gs)
         else
           if not gs.isLocking then gs.lockTimerId = os.startTimer(0.5); gs.isLocking = true end
         end
-
       elseif action=="rotate" or action=="rotate_ccw" or action=="rotate180" then
         local cnt = #gs.current.shapeList
         if cnt > 1 then
@@ -1148,15 +1144,13 @@ local function gameLoop()
           elseif action=="rotate_ccw" then
             local targetRot = gs.current.rot - 1; if targetRot < 1 then targetRot = cnt end
             tryRotateNES(gs, targetRot)
-          else -- 180
+          else
             local targetRot = ((gs.current.rot - 1 + 2) % cnt) + 1
             tryRotateNES(gs, targetRot)
           end
         end
-        redrawAll(gs); drawInfo(gs)
-
+        redrawAll(gs)
       elseif action=="drop" then
-     
         local moved = 0
         while not collides(gs, gs.current.x, gs.current.y+1, gs.current.shape) do
           gs.current.y = gs.current.y + 1; moved = moved + 1
@@ -1166,36 +1160,28 @@ local function gameLoop()
         clearLines(gs)
         if not spawnPiece(gs) then break end
         gs.isLocking = false; gs.lockTimerId = nil
-        redrawAll(gs); drawInfo(gs)
+        redrawAll(gs)
         gravityReset(gs)
-
       elseif action=="pause" then
         gs.paused = true
-     
         local savedTick = music.tick
         local savedOpt = music.current
         music:stop()
         music:setSpeedMul(1.0)
         music:resetPosition()
-        music:playScore(true)
-
+        if settings.menuMusic ~= "Off" then music:playScore(true) end
         while true do
           local choice = pauseMenu()
           if choice == "Continue" then
             gs.paused = false
-          
             gs.lockTimerId = nil
             gs.isLocking = false
             if collides(gs, gs.current.x, gs.current.y+1, gs.current.shape) then
               gs.lockTimerId = os.startTimer(0.5)
               gs.isLocking = true
             end
-
-        
             gravityReset(gs)
             gravityArm(gs)
-
-            -- resume game music
             music:stop()
             music.current = settings.music or savedOpt
             if (settings.music or "A") ~= "Off" then
@@ -1204,16 +1190,13 @@ local function gameLoop()
             end
             redrawAll(gs)
             break
-
           elseif choice == "Settings" then
             settingsMenu()
             settings = safeLoadSettings()
             redrawAll(gs)
-
           elseif choice == "Top Scores" then
             drawNESLeaderboard()
             redrawAll(gs)
-
           elseif choice == "Exit" then
             music:stop()
             safeSaveSettings(settings)
@@ -1221,16 +1204,12 @@ local function gameLoop()
           end
         end
       end
-
     elseif ev=="timer" then
-      -- gravity tick
       if a == gs.gravityTimerId then
         gs.gravityTimerId = nil
-
         local now = os.clock()
         local dt = now - (gs.gravityLastClock or now)
         gs.gravityLastClock = now
-
         if not gs.paused then
           gs.gravityAccum = (gs.gravityAccum or 0) + dt
           local spc = nes_seconds_per_cell(gs.level)
@@ -1238,7 +1217,7 @@ local function gameLoop()
           if spc > 0 then steps = math.floor(gs.gravityAccum / spc) end
           if steps > 0 then
             gs.gravityAccum = gs.gravityAccum - steps * spc
-            if steps > 20 then steps = 20 end 
+            if steps > 20 then steps = 20 end
             local needRedraw = false
             for i=1,steps do
               if not collides(gs, gs.current.x, gs.current.y+1, gs.current.shape) then
@@ -1254,14 +1233,12 @@ local function gameLoop()
                 break
               end
             end
-            if needRedraw then redrawAll(gs); drawInfo(gs) end
+            if needRedraw then redrawAll(gs) end
           end
         else
-        
           gravityReset(gs)
         end
         gravityArm(gs)
-
       elseif a == gs.lockTimerId then
         gs.lockTimerId = nil
         if not gs.paused then
@@ -1269,17 +1246,14 @@ local function gameLoop()
           clearLines(gs)
           if not spawnPiece(gs) then break end
           gs.isLocking = false
-          redrawAll(gs); drawInfo(gs)
+          redrawAll(gs)
           gravityReset(gs)
         else
           gs.isLocking = false
         end
-
       else
         music:onTimer(a, gs.paused)
       end
-
-    
       local danger = false
       do
         for y=1,5 do
@@ -1291,40 +1265,37 @@ local function gameLoop()
       if not gs.paused then
         if danger then music:setSpeedMul(1.5) else music:setSpeedMul(1.0) end
       end
-
     elseif ev=="term_resize" then
-      w,h = term.getSize()
-      startX = math.floor((w - fieldW*cellW)/2)+1
-      startY = math.floor((h - fieldH)/2)+1
-      redrawAll(gs)
+      handleResize(function()
+        recalcLayout()
+        redrawAll(gs)
+      end)
     end
   end
-
   return true, gs.score, gs.linesCleared, gs.level, gs.startLevelBase
 end
 
--- ------------------------------
--- Имя/Гейм-овер/Запуск
--- ------------------------------
 local function promptNameNES()
-  term.setTextColor(colors.white)
-  local prompt = "Enter name (0-"..MAX_NAME_LEN.." chars), ENTER to confirm:"
-  local w2,h2 = term.getSize()
-  local px = math.floor((w2 - #prompt)/2)+1
-  local py = math.floor(h2/2)+1
-  term.setCursorPos(px, py); term.write(prompt)
-  term.setCursorPos(px, py+2); term.write("> ")
-  term.setCursorBlink(true)
-
-  local s = ""
-  local function redrawInput()
-    term.setCursorPos(px+2, py+2)
+  local function drawPrompt(s)
+    beginFrame()
+    term.setTextColor(colors.white)
+    local prompt = "Enter name (0-"..MAX_NAME_LEN.." chars), ENTER to confirm:"
+    local w2,h2 = w,h
+    local px = math.floor((w2 - #prompt)/2)+1
+    local py = math.floor(h2/2)+1
+    term.setBackgroundColor(bgColor); term.clear()
+    term.setCursorPos(px, py-4); term.write(prompt)
+    term.setCursorPos(px, py-2); term.write("> ")
+    term.setCursorPos(px+2, py-2)
     term.write(string.rep(" ", MAX_NAME_LEN))
-    term.setCursorPos(px+2, py+2)
-    term.write(s)
+    term.setCursorPos(px+2, py-2)
+    term.write(s or "")
+    endFrame()
+    return px, py
   end
-  redrawInput()
-
+  term.setCursorBlink(true)
+  local s = ""
+  local px, py = drawPrompt(s)
   while true do
     local ev,a = os.pullEvent()
     if ev=="char" then
@@ -1332,7 +1303,8 @@ local function promptNameNES()
         local ch = string.upper(a or "")
         if ch:match("[A-Z0-9%- ]") then
           s = s .. ch
-          redrawInput()
+          px, py = drawPrompt(s)
+          term.setCursorPos(px+2 + #s, py-2)
         end
       end
     elseif ev=="key" then
@@ -1342,37 +1314,41 @@ local function promptNameNES()
       elseif a == keys.backspace then
         if #s > 0 then
           s = s:sub(1, -2)
-          redrawInput()
+          px, py = drawPrompt(s)
+          term.setCursorPos(px+2 + #s, py-2)
         end
       end
     elseif ev=="timer" then
       music:onTimer(a, true)
+    elseif ev=="term_resize" then
+      handleResize(function()
+        recalcLayout()
+        px, py = drawPrompt(s)
+      end)
     end
   end
 end
 
 local function gameOverScreen(score, lines, level, startLevel)
+  beginFrame()
   term.setBackgroundColor(colors.black); term.clear()
-  local w2,h2 = term.getSize()
+  local w2,h2 = w,h
   local midY = math.floor(h2/2)
-
-
-  music:stop(); music:setSpeedMul(1.0); music:resetPosition(); music:playScore(true)
-
+  music:stop(); music:setSpeedMul(1.0); music:resetPosition(); if settings.menuMusic ~= "Off" then music:playScore(true) end
   local function centerX(s) return math.floor((w2 - string.len(s))/2)+1 end
   term.setCursorPos(centerX("GAME OVER! Score: "..score), midY-3)
   term.setTextColor(colors.white); term.write("GAME OVER! Score: "..score)
   term.setCursorPos(centerX("Lines: "..lines.."   Level: "..level), midY-2)
   term.write("Lines: "..lines.."   Level: "..level)
-
+  endFrame()
   local name = promptNameNES()
   insertLocalEntry(name, score, level)
+  beginFrame()
   term.setCursorPos(centerX("Saved to local top scores"), midY+4)
   term.setTextColor(colors.lightGray); term.write("Saved to local top scores")
-
   term.setCursorPos(centerX("Press ENTER to play again, any other key to exit"), midY+6)
   term.setTextColor(colors.white); term.write("Press ENTER to play again, any other key to exit")
-
+  endFrame()
   while true do
     local ev, a = os.pullEvent()
     if ev=="key" then
@@ -1380,13 +1356,23 @@ local function gameOverScreen(score, lines, level, startLevel)
       if a == keys.enter then return true else return false end
     elseif ev=="timer" then
       music:onTimer(a, true)
+    elseif ev=="term_resize" then
+      handleResize(function()
+        recalcLayout()
+        beginFrame()
+        term.setBackgroundColor(colors.black); term.clear()
+        w2,h2 = w,h
+        midY = math.floor(h2/2)
+        term.setCursorPos(centerX("Saved to local top scores"), midY+4)
+        term.setTextColor(colors.lightGray); term.write("Saved to local top scores")
+        term.setCursorPos(centerX("Press ENTER to play again, any other key to exit"), midY+6)
+        term.setTextColor(colors.white); term.write("Press ENTER to play again, any other key to exit")
+        endFrame()
+      end)
     end
   end
 end
 
--- ------------------------------
--- Run
--- ------------------------------
 while true do
   local ok, score, lines, level, startLevel = gameLoop()
   if not ok then break end
@@ -1397,8 +1383,6 @@ while true do
 end
 
 music:stop()
+beginFrame()
 term.setBackgroundColor(colors.black); term.clear(); term.setCursorPos(1,1)
-
-
-
-
+endFrame()
