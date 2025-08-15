@@ -1,4 +1,4 @@
--- Tessera (NES scoring + NES gravity/level progression)
+-- Tessera
 
 -- ------------------------------
 -- Utility / persistence
@@ -1398,6 +1398,7 @@ end
 
 music:stop()
 term.setBackgroundColor(colors.black); term.clear(); term.setCursorPos(1,1)
+
 
 
 
