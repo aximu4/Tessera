@@ -1285,7 +1285,7 @@ local function promptNameNES()
     local py = math.floor(h2/2)+1
     term.setBackgroundColor(bgColor); term.clear()
     term.setCursorPos(px, py-4); term.write(prompt)
-    term.setCursorPos(px, py-2); term.write("> ")
+    term.setCursorPos(px, py-2); term.write(">")
     term.setCursorPos(px+2, py-2)
     term.write(string.rep("", MAX_NAME_LEN))
     term.setCursorPos(px+2, py-2)
@@ -1386,4 +1386,5 @@ music:stop()
 beginFrame()
 term.setBackgroundColor(colors.black); term.clear(); term.setCursorPos(1,1)
 endFrame()
+
 
